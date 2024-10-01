@@ -33,7 +33,6 @@ def authenticate(username, password):
         response = requests.post(
             authenticate_url, json=data
         )
-        print(response.text)
         if response.status_code == requests.codes.ok:
             return response.json()["token"]
     return
@@ -86,7 +85,7 @@ table = dash_table.DataTable(
         ],
         data=fetch_data(),
         editable=True,
-        page_size=100,
+        page_size=20,
         sort_action="native",
         sort_mode="multi",
         style_cell={'textAlign': 'left'},
@@ -116,10 +115,20 @@ table = dash_table.DataTable(
 app.layout = html.Div([
     dcc.Store(id='memory-output'),
     html.Div([table]),
+    dbc.Toast(
+        id="update-toast",
+        header="Update successful",
+        is_open=False,
+        duration=3000,
+        icon="success",
+        dismissable=True,
+        style={"position": "fixed", "top": 10, "right": 10}
+    )
 ])
 
 @app.callback(
-    Output('editable-table', 'data'),
+    [Output('editable-table', 'data'),
+    Output('update-toast', 'is_open')],
     Input('editable-table', 'data'),
     State('editable-table', 'data_previous'),
 )
@@ -134,12 +143,14 @@ def update_table(data, data_previous):
             payload = {
                 "fragment": current_row["Fragment"]
             }
-            response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{current_row["PK"]}/', json=payload, headers=headers)
+            response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{current_row["ID"]}/', json=payload, headers=headers)
     
             if response.status_code != 200:
-                print(f"Failed to update row with ID {current_row['PK']}")
+                print(f"Failed to update row with ID {current_row['ID']}")
+            else:
+                return data, True
     
-    return data
+    return data, False
 
 @app.callback(
     Output('memory-output', 'data'),

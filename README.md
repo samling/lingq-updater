@@ -17,6 +17,8 @@ This is a very simple web application that will grab your LingQs, display them i
 
 Double click in any `Fragment` cell to update the value. Once double-clicked, you can use the arrow keys to show a cursor.
 
+_Note that the initial load may take a few seconds if you have a lot of LingQs; the API returns results in batches of 100 and so each batch must be queried before they're all displayed._
+
 ## Screenshots
 
 ![lingq updater screenshot](./screenshots/lingq-updater-screenshot.png)
