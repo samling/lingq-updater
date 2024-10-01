@@ -17,6 +17,10 @@ This is a very simple web application that will grab your LingQs, display them i
 
 Double click in any `Fragment` cell to update the value. Once double-clicked, you can use the arrow keys to show a cursor.
 
+## Screenshots
+
+![lingq updater screenshot](./screenshots/lingq-updater-screenshot.png)
+
 ## Acknowledgements
 
 This was hastily cobbled together with the help of a few different sources:
