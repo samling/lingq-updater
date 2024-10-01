@@ -1,0 +1,9 @@
+[auth]
+# apiKey is ignored if username and password are set
+# do not wrap values in quotes
+username =
+password =
+
+# username and password are ignored if apiKey is set
+# do not wrap values in quotes
+apiKey =
