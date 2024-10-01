@@ -49,7 +49,6 @@ headers = {
     'cache-control': 'no-cache'
 }
 
-
 def fetch_data():
     cards_url="https://www.lingq.com/api/v3/de/cards/?page_size=100"
     response = requests.get(cards_url, headers=headers).json()
@@ -65,7 +64,7 @@ def fetch_data():
         formatted_data = []
         for item in cards:
             formatted_data.append({
-                'PK': item['pk'],
+                'ID': item['pk'],
                 'Term': item['term'],
                 'Fragment': item['fragment'],
                 'Hint': item['hints'][0]['text'] if item['hints'] else '',
@@ -79,7 +78,7 @@ def fetch_data():
 table = dash_table.DataTable(
         id='editable-table',
         columns=[
-            {"name": "PK", "id": "PK", "editable": False},
+            {"name": "ID", "id": "ID", "editable": False},
             {"name": "Term", "id": "Term", "editable": False},
             {"name": "Fragment", "id": "Fragment", "editable": True},
             {"name": "Hint", "id": "Hint", "editable": False},
