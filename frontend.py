@@ -181,6 +181,8 @@ def manage_table(stored_data, data, search_value, clear_btn_clicks, data_previou
     if triggered_input == 'clear-search-btn.n_clicks':
         return stored_data, False, stored_data, ""
 
+    # TODO: When we search, stored_data is replaced with only the contents of the search, which means we need to clear the search
+    # TODO: before we reload, or else handle it better
     if triggered_input == 'search-box.value':
         if not stored_data:
             stored_data = initial_data
