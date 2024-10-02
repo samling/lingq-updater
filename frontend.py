@@ -78,6 +78,7 @@ initial_data = fetch_data()
 
 app.layout = html.Div([
     dcc.Store(id='stored-data', storage_type='session'),
+    dcc.Store(id='filtered-data', storage_type='memory'),
     html.Div([
         dcc.Input(
             id='search-box',
@@ -123,7 +124,6 @@ app.layout = html.Div([
             ],
             row_deletable=False,
             persistence=True,
-            persistence_type="local",
         )
     ]),
     dbc.Toast(
@@ -141,14 +141,16 @@ app.layout = html.Div([
     [Output('editable-table', 'data'),
     Output('update-toast', 'is_open'),
     Output('stored-data', 'data'),
+    Output('filtered-data', 'data'),
     Output('search-box', 'value')],
     [Input('stored-data', 'data'),
     Input('editable-table', 'data'),
     Input('search-box', 'value'),
     Input('clear-search-btn', 'n_clicks')],
-    [State('editable-table', 'data_previous')],
+    [State('editable-table', 'data_previous'),
+     State('filtered-data', 'data')],
 )
-def manage_table(stored_data, data, search_value, clear_btn_clicks, data_previous):
+def manage_table(stored_data, data, search_value, clear_btn_clicks, data_previous, filtered_data):
     ctx = dash.callback_context
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
@@ -157,38 +159,40 @@ def manage_table(stored_data, data, search_value, clear_btn_clicks, data_previou
 
     # Handle initial load
     if triggered_input == 'stored-data.data':
-        if not stored_data:
-            stored_data = initial_data
-        return stored_data, False, stored_data, ""
+        if not stored_data or len(stored_data) == 0:
+            return initial_data, False, initial_data, initial_data, ""
+        return stored_data, False, stored_data, stored_data, ""
 
     # Handle updates
     if triggered_input == 'editable-table.data' and data_previous is not None:
+        updated_stored_data = stored_data.copy()
         for i, (previous_row, current_row) in enumerate(zip(data_previous, data)):
             if previous_row != current_row:
-                # Prepare the payload with the changed data
-                payload = {
-                    "fragment": current_row["Fragment"]
-                }
-                response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{current_row["ID"]}/', json=payload, headers=headers)
-        
-                if response.status_code == 200:
-                    updated_data = data
-                    return updated_data, True, updated_data, search_value
-                else:
-                    print(f"Failed to update row with ID {current_row['ID']}")
-                    return data, False, stored_data, search_value
+                # Find matching row in stored_data and update it
+                for row in updated_stored_data:
+                    if row['ID'] == current_row['ID']:
+                        row.update(current_row)
+                        # Prepare the payload with the changed data
+                        payload = {
+                            "fragment": current_row["Fragment"]
+                        }
+                        response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{current_row["ID"]}/', json=payload, headers=headers)
+                
+                        if response.status_code != 200:
+                            print(f"Failed to update row with ID {current_row['ID']}")
+                return data, True, updated_stored_data, filtered_data, search_value
 
     if triggered_input == 'clear-search-btn.n_clicks':
-        return stored_data, False, stored_data, ""
+        return stored_data, False, stored_data, stored_data, ""
 
     # TODO: When we search, stored_data is replaced with only the contents of the search, which means we need to clear the search
     # TODO: before we reload, or else handle it better
     if triggered_input == 'search-box.value':
-        if not stored_data:
-            stored_data = initial_data
+        # if not stored_data:
+        #     stored_data = initial_data
 
         if not search_value:
-            return stored_data, False, stored_data, ""
+            return stored_data, False, stored_data, stored_data, ""
 
         filtered_data = [
             row for row in stored_data
@@ -196,9 +200,9 @@ def manage_table(stored_data, data, search_value, clear_btn_clicks, data_previou
                 search_value.lower() in row['Fragment'].lower() or
                 search_value.lower() in row['Hint'].lower()
         ]
-        return filtered_data, False, stored_data, search_value
+        return filtered_data, False, stored_data, filtered_data, search_value
 
-    return data, False, stored_data, search_value
+    return data, False, stored_data, filtered_data, search_value
 
 if __name__ == '__main__':
     app.run_server(debug=True, use_reloader=False, host='0.0.0.0')
