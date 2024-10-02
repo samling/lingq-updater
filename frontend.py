@@ -79,6 +79,8 @@ initial_data = fetch_data()
 app.layout = html.Div([
     dcc.Store(id='stored-data', storage_type='session'),
     dcc.Store(id='filtered-data', storage_type='memory'),
+    dcc.Store(id='selected-row-id', storage_type='memory'),
+    dcc.Store(id='sort-state', storage_type='memory'),
     html.Div([
         dcc.Input(
             id='search-box',
@@ -106,7 +108,7 @@ app.layout = html.Div([
             editable=True,
             page_size=20,
             sort_action="native",
-            sort_mode="multi",
+            sort_mode="single",
             style_cell={'textAlign': 'left'},
             style_data={'whiteSpace': 'normal', 'textAlign': 'left'},
             style_data_conditional=[
@@ -148,17 +150,22 @@ app.layout = html.Div([
     Output('update-toast', 'is_open'),
     Output('stored-data', 'data'),
     Output('filtered-data', 'data'),
-    Output('search-box', 'value')],
+    Output('search-box', 'value'),
+    Output('selected-row-id', 'data'),
+    Output('sort-state', 'data')],
     [Input('stored-data', 'data'),
     Input('editable-table', 'active_cell'),
     Input('save-button', 'n_clicks'),
     Input('search-box', 'value'),
-    Input('clear-search-btn', 'n_clicks')],
+    Input('clear-search-btn', 'n_clicks'),
+    Input('editable-table', 'sort_by')],
     [State('edit-fragment', 'value'),
      State('editable-table', 'data'),
-     State('filtered-data', 'data')],
+     State('filtered-data', 'data'),
+     State('selected-row-id', 'data'),
+     State('sort-state', 'data')],
 )
-def manage_table(stored_data, active_cell, n_clicks, search_value, clear_btn_clicks, edited_value, table_data, filtered_data):
+def manage_table(stored_data, active_cell, n_clicks, search_value, clear_btn_clicks, sort_by, edited_value, table_data, filtered_data, selected_row_id, sort_state):
     ctx = dash.callback_context
     if not ctx.triggered:
         raise dash.exceptions.PreventUpdate
@@ -166,63 +173,67 @@ def manage_table(stored_data, active_cell, n_clicks, search_value, clear_btn_cli
     triggered_input = ctx.triggered[0]['prop_id']
     update_toast = False
 
-    # Handle initial load
+    # Handle initial load with stored data or fall back to initial_data if empty
     if triggered_input == 'stored-data.data':
         if not stored_data or len(stored_data) == 0:
-            return initial_data, "", False, initial_data, initial_data, ""
-        return stored_data, "", False, stored_data, stored_data, ""
+            return initial_data, "", False, initial_data, initial_data, "", None, None
+        return stored_data, "", False, stored_data, stored_data, "", None, None
 
-    # Handle updating the text area based on clicked Fragment cell
+    # Handle sorting
+    if triggered_input == 'editable-table.sort_by':
+        if sort_by:
+            sorted_data = sorted(
+                table_data,
+                key=lambda x: x[sort_by[0]['column_id']],
+                reverse=sort_by[0]['direction'] == 'desc'
+            )
+            return sorted_data, dash.no_update, False, stored_data, sorted_data, dash.no_update, selected_row_id, sort_by
+
+    # Handle updating the text area based on the clicked Fragment cell
     if triggered_input == 'editable-table.active_cell' and active_cell:
         if active_cell['column_id'] == 'Fragment':
+            # Extract ID of the selected row from the current table data
             selected_row_id = table_data[active_cell['row']]['ID']
+            # Use the ID to find the correct row in the full stored_data
             row_data = next((row for row in table_data if row['ID'] == selected_row_id), None)
             if row_data:
-                return dash.no_update, row_data['Fragment'], False, dash.no_update, dash.no_update, dash.no_update
-    
+                return dash.no_update, row_data['Fragment'], False, dash.no_update, dash.no_update, dash.no_update, selected_row_id, dash.no_update
+
     # Handle saving the edit from the text area
-    if triggered_input == 'save-button.n_clicks' and n_clicks:
-        if active_cell:
-            selected_row_id = table_data[active_cell['row']]['ID']
-            updated_stored_data = stored_data.copy()
+    if triggered_input == 'save-button.n_clicks' and n_clicks and selected_row_id:
+        updated_data = [row.copy() for row in table_data]
+        for row in updated_data:
+            if row['ID'] == selected_row_id:
+                row['Fragment'] = edited_value
+                payload = {"fragment": edited_value}
+                response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{row["ID"]}/', json=payload, headers=headers)
+                if response.status_code == 200:
+                    update_toast = True
 
-            for row in updated_stored_data:
-                if row['ID'] == selected_row_id:
-                    row['Fragment'] = edited_value
+        # Update stored_data
+        updated_stored_data = [row if row['ID'] != selected_row_id else next(r for r in updated_data if r['ID'] == selected_row_id) for row in stored_data]
 
-                    payload = {"fragment": edited_value}
-                    response = requests.patch(f'https://www.lingq.com/api/v3/de/cards/{row["ID"]}/', json=payload, headers=headers)
-                    if response.status_code == 200:
-                        update_toast = True
-
-            updated_filtered_data = [
-                row if row['ID'] != selected_row_id else updated_stored_data[row_id]
-                for row_id, row in enumerate(filtered_data)
-            ]
-
-            return updated_stored_data, "", update_toast, updated_stored_data, updated_filtered_data, ""
-
-    # Handle clear search functionality
-    if triggered_input == 'clear-search-btn.n_clicks':
-        return stored_data, "", False, stored_data, stored_data, ""
+        return updated_data, "", update_toast, updated_stored_data, updated_data, dash.no_update, None, dash.no_update
 
     # Handle search functionality
     if triggered_input == 'search-box.value':
-        # if not stored_data:
-        #     stored_data = initial_data
-
         if not search_value:
-            return stored_data,"",  False, stored_data, stored_data, ""
+            return stored_data, "", False, stored_data, stored_data, "", None, None
 
         filtered_data = [
             row for row in stored_data
             if search_value.lower() in row['Term'].lower() or
-                search_value.lower() in row['Fragment'].lower() or
-                search_value.lower() in row['Hint'].lower()
+               search_value.lower() in row['Fragment'].lower() or
+               search_value.lower() in row['Hint'].lower()
         ]
-        return filtered_data, "", False, stored_data, filtered_data, search_value
+        return filtered_data, "", False, stored_data, filtered_data, search_value, None, None
 
-    return table_data, "", False, stored_data, filtered_data, search_value
+    # Handle clear search functionality
+    if triggered_input == 'clear-search-btn.n_clicks':
+        return stored_data, "", False, stored_data, stored_data, "", None, None
+
+    return table_data, "", False, stored_data, filtered_data, search_value, selected_row_id, sort_state
+
 
 if __name__ == '__main__':
     app.run_server(debug=True, use_reloader=False, host='0.0.0.0')
